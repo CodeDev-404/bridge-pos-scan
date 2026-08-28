@@ -62,11 +62,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString();
+        final displayError = errorMsg.length > 200
+            ? errorMsg.substring(0, 200) + '...'
+            : errorMsg;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString().split(':').first}'),
+            content: Text('Error: $displayError'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -93,11 +97,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString();
+        // Show more of the error for debugging
+        final displayError = errorMsg.length > 200 
+            ? errorMsg.substring(0, 200) + '...' 
+            : errorMsg;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al cambiar: ${e.toString().split(':').first}'),
+            content: Text('Error al cambiar: $displayError'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
