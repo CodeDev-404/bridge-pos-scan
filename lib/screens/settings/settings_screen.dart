@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/supabase_config.dart';
 
 class _SectionHeader extends StatelessWidget {
@@ -21,102 +22,119 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ajustes'),
-      ),
-      body: ListView(
-        children: [
-          // Supabase Connection
-          const _SectionHeader(title: 'Conexión'),
-          ListTile(
-            leading: const Icon(Icons.cloud),
-            title: const Text('Supabase URL'),
-            subtitle: Text(
-              SupabaseConfig.supabaseUrl == 'YOUR_SUPABASE_URL'
-                  ? 'No configurado'
-                  : SupabaseConfig.supabaseUrl,
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              _showEditDialog(
-                context,
-                'Supabase URL',
-                SupabaseConfig.supabaseUrl,
-                (value) {
-                  // Would update config
-                },
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.vpn_key),
-            title: const Text('Supabase Anon Key'),
-            subtitle: Text(
-              SupabaseConfig.supabaseAnonKey == 'YOUR_SUPABASE_ANON_KEY'
-                  ? 'No configurado'
-                  : '${SupabaseConfig.supabaseAnonKey.substring(0, 20)}...',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              _showEditDialog(
-                context,
-                'Supabase Anon Key',
-                SupabaseConfig.supabaseAnonKey,
-                (value) {
-                  // Would update config
-                },
-              );
-            },
-          ),
-          const Divider(),
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
 
-          // About
-          const _SectionHeader(title: 'Acerca de'),
-          const ListTile(
-            leading: Icon(Icons.info),
-            title: Text('Versión'),
-            subtitle: Text('1.0.0+1'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.code),
-            title: Text('Bridge+ POS Scan'),
-            subtitle: Text('Lector QR/Código de barras para vwbta'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.business),
-            title: Text('Sistema'),
-            subtitle: Text('vwbta - Sistema de ventas MVP'),
-          ),
-          const Divider(),
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool _isTesting = false;
 
-          // Database setup
-          const _SectionHeader(title: 'Base de datos'),
-          ListTile(
-            leading: const Icon(Icons.table_chart),
-            title: const Text('Estructura de tablas'),
-            subtitle: const Text('Ver SQL de creación de tablas'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              _showSqlDialog(context);
-            },
+  Future<void> _testConnection() async {
+    setState(() => _isTesting = true);
+
+    try {
+      // Try a simple query to verify connection
+      await Supabase.instance.client
+          .from(SupabaseConfig.productsTable)
+          .select('id')
+          .limit(1);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Conexión exitosa ✓'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isTesting = false);
+    }
+  }
+
+  Future<void> _saveConfig(String url, String key) async {
+    await SupabaseConfig.updateConfig(url, key);
+
+    // Reinitialize Supabase client
+    try {
+      await Supabase.initialize(
+        url: url,
+        publishableKey: key,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Configuración guardada y reconectada'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {}); // Refresh UI
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al reconectar: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetConfig() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restablecer configuración'),
+        content: const Text(
+          'Esto borrará la URL y Key guardadas. La app volverá a usar los valores por defecto.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Restablecer'),
           ),
         ],
       ),
     );
+
+    if (confirm == true) {
+      await SupabaseConfig.resetToDefault();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Configuración restablecida')),
+        );
+        setState(() {});
+      }
+    }
   }
 
-  void _showEditDialog(
-    BuildContext context,
-    String title,
-    String currentValue,
-    Function(String) onSave,
-  ) {
+  void _showEditDialog({
+    required BuildContext context,
+    required String title,
+    required String currentValue,
+    required Function(String) onSave,
+    bool obscureText = false,
+  }) {
     final controller = TextEditingController(text: currentValue);
     showDialog(
       context: context,
@@ -124,9 +142,11 @@ class SettingsScreen extends StatelessWidget {
         title: Text(title),
         content: TextField(
           controller: controller,
-          decoration: InputDecoration(
+          obscureText: obscureText,
+          decoration: const InputDecoration(
             hintText: 'Ingresa el valor',
           ),
+          maxLines: obscureText ? 1 : null,
         ),
         actions: [
           TextButton(
@@ -135,7 +155,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              onSave(controller.text);
+              onSave(controller.text.trim());
               Navigator.pop(ctx);
             },
             child: const Text('Guardar'),
@@ -251,6 +271,102 @@ CREATE INDEX idx_scans_created ON scans(created_at DESC);
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = SupabaseConfig.supabaseUrl;
+    final key = SupabaseConfig.supabaseAnonKey;
+    final hasCustomConfig = url != 'YOUR_SUPABASE_URL';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ajustes')),
+      body: ListView(
+        children: [
+          // Supabase Connection
+          const _SectionHeader(title: 'Conexión Supabase'),
+          ListTile(
+            leading: const Icon(Icons.cloud),
+            title: const Text('Supabase URL'),
+            subtitle: Text(
+              hasCustomConfig ? url : 'No configurado (usando default)',
+              style: TextStyle(
+                color: hasCustomConfig ? null : Colors.grey,
+              ),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showEditDialog(
+              context: context,
+              title: 'Supabase URL',
+              currentValue: url,
+              onSave: (value) => _saveConfig(value, key),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.vpn_key),
+            title: const Text('Publishable Key (Anon Key)'),
+            subtitle: Text(
+              hasCustomConfig
+                  ? '${key.substring(0, 20)}...'
+                  : 'No configurado (usando default)',
+              style: TextStyle(
+                color: hasCustomConfig ? null : Colors.grey,
+              ),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showEditDialog(
+              context: context,
+              title: 'Publishable Key',
+              currentValue: key,
+              obscureText: true,
+              onSave: (value) => _saveConfig(url, value),
+            ),
+          ),
+          ListTile(
+            leading: Icon(_isTesting ? Icons.hourglass_empty : Icons.wifi),
+            title: const Text('Probar conexión'),
+            subtitle: const Text('Verifica que la URL y Key funcionen'),
+            onTap: _isTesting ? null : _testConnection,
+          ),
+          ListTile(
+            leading: const Icon(Icons.restore, color: Colors.orange),
+            title: const Text('Restablecer a valores por defecto'),
+            subtitle: const Text('Borra configuración guardada'),
+            onTap: _resetConfig,
+          ),
+          const Divider(),
+
+          // About
+          const _SectionHeader(title: 'Acerca de'),
+          const ListTile(
+            leading: Icon(Icons.info),
+            title: Text('Versión'),
+            subtitle: Text('1.0.0+1'),
+          ),
+          const ListTile(
+            leading: Icon(Icons.code),
+            title: Text('Bridge+ POS Scan'),
+            subtitle: Text('Lector QR/Código de barras para sistema POS'),
+          ),
+          const ListTile(
+            leading: Icon(Icons.business),
+            title: Text('Sistema'),
+            subtitle: Text('Sistema POS - MVP primera versión'),
+          ),
+          const Divider(),
+
+          // Database setup
+          const _SectionHeader(title: 'Base de datos'),
+          ListTile(
+            leading: const Icon(Icons.table_chart),
+            title: const Text('Estructura de tablas'),
+            subtitle: const Text('Ver SQL de creación de tablas'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showSqlDialog(context),
           ),
         ],
       ),

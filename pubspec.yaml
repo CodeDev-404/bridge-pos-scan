@@ -33,6 +33,9 @@ dependencies:
   # UUID para sesiones
   uuid: ^4.5.1
 
+  # Configuración persistente
+  shared_preferences: ^2.5.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
