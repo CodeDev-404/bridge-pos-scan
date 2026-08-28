@@ -1,0 +1,14 @@
+class SupabaseConfig {
+  // Reemplaza con tus credenciales de Supabase
+  // Obténlas en: Settings → API → Project URL / publishable key
+  static const String supabaseUrl = 'https://TU_PROYECTO.supabase.co';
+  static const String supabaseAnonKey = 'sb_publishable_TU_KEY_AQUI';
+
+  // Tablas
+  static const String productsTable = 'products';
+  static const String cartItemsTable = 'cart_items';
+  static const String salesTable = 'sales';
+  static const String saleItemsTable = 'sale_items';
+  static const String scansTable = 'scans';
+  static const String invoicesTable = 'invoices';
+}
