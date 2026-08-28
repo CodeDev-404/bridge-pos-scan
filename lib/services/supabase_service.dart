@@ -4,9 +4,10 @@ import '../models/product_model.dart';
 import '../models/sale_model.dart';
 import '../models/scan_model.dart';
 import '../models/invoice_model.dart';
+import 'supabase_client_manager.dart';
 
 class SupabaseService {
-  final SupabaseClient _client = Supabase.instance.client;
+  SupabaseClient get _client => SupabaseClientManager().client!;
 
   // ==================== PRODUCTS ====================
 

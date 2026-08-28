@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import '../../config/supabase_config.dart';
+import '../../services/supabase_client_manager.dart';
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -32,25 +32,21 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isTesting = false;
-  bool _needsRestart = false;
+  bool _isSwitching = false;
+  final _manager = SupabaseClientManager();
 
   Future<void> _testConnection() async {
     setState(() => _isTesting = true);
 
     try {
-      // Quick test with 3s timeout - just check if we can reach the API
-      await Supabase.instance.client
-          .from(SupabaseConfig.productsTable)
-          .select('id')
-          .limit(1)
-          .timeout(const Duration(seconds: 3));
+      final ok = await _manager.testConnection();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Conexión exitosa ✓'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(ok ? 'Conexión exitosa ✓' : 'No se pudo conectar'),
+            backgroundColor: ok ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -70,7 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SnackBar(
             content: Text('Error: ${e.toString().split(':').first}'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -80,18 +76,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveConfig(String url, String key) async {
-    await SupabaseConfig.updateConfig(url, key);
+    setState(() => _isSwitching = true);
 
-    setState(() => _needsRestart = true);
+    try {
+      await _manager.switchCredentials(url, key);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Configuración guardada. Reinicia la app para aplicar.'),
-          backgroundColor: Colors.blue,
-          duration: Duration(seconds: 4),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Conexión cambiada al instante ✓'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() {}); // Refresh UI to show new URL/Key
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cambiar: ${e.toString().split(':').first}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSwitching = false);
     }
   }
 
@@ -101,7 +112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Restablecer configuración'),
         content: const Text(
-          'Esto borrará la URL y Key guardadas. La app volverá a usar los valores por defecto al reiniciar.',
+          'Esto borrará la URL y Key guardadas. La app volverá a usar los valores por defecto.',
         ),
         actions: [
           TextButton(
@@ -118,12 +129,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (confirm == true) {
-      await SupabaseConfig.resetToDefault();
-      setState(() => _needsRestart = true);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Configuración restablecida. Reinicia la app.')),
-        );
+      try {
+        await _manager.reset();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Configuración restablecida ✓')),
+          );
+          setState(() {});
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }
@@ -282,37 +301,22 @@ CREATE INDEX idx_scans_created ON scans(created_at DESC);
     final url = SupabaseConfig.supabaseUrl;
     final key = SupabaseConfig.supabaseAnonKey;
     final hasCustomConfig = url != 'YOUR_SUPABASE_URL';
+    final managerUrl = _manager.currentUrl;
+    final managerKey = _manager.currentKey;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
       body: ListView(
         children: [
-          // Restart banner
-          if (_needsRestart)
-            Container(
-              color: Colors.blue.shade50,
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  const Icon(Icons.restart_alt, color: Colors.blue),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Cambios guardados. Cierra y abre la app para aplicar nueva conexión.',
-                      style: TextStyle(color: Colors.blue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
           // Supabase Connection
           const _SectionHeader(title: 'Conexión Supabase'),
           ListTile(
             leading: const Icon(Icons.cloud),
             title: const Text('Supabase URL'),
             subtitle: Text(
-              hasCustomConfig ? url : 'No configurado (usando default)',
+              hasCustomConfig 
+                ? (managerUrl ?? url) 
+                : 'No configurado (usando default)',
               style: TextStyle(
                 color: hasCustomConfig ? null : Colors.grey,
               ),
@@ -321,8 +325,8 @@ CREATE INDEX idx_scans_created ON scans(created_at DESC);
             onTap: () => _showEditDialog(
               context: context,
               title: 'Supabase URL',
-              currentValue: url,
-              onSave: (value) => _saveConfig(value, key),
+              currentValue: managerUrl ?? url,
+              onSave: (value) => _saveConfig(value, managerKey ?? key),
             ),
           ),
           ListTile(
@@ -330,7 +334,7 @@ CREATE INDEX idx_scans_created ON scans(created_at DESC);
             title: const Text('Publishable Key (Anon Key)'),
             subtitle: Text(
               hasCustomConfig
-                  ? '${key.substring(0, 20)}...'
+                  ? '${(managerKey ?? key).substring(0, 20)}...'
                   : 'No configurado (usando default)',
               style: TextStyle(
                 color: hasCustomConfig ? null : Colors.grey,
@@ -340,16 +344,16 @@ CREATE INDEX idx_scans_created ON scans(created_at DESC);
             onTap: () => _showEditDialog(
               context: context,
               title: 'Publishable Key',
-              currentValue: key,
+              currentValue: managerKey ?? key,
               obscureText: true,
-              onSave: (value) => _saveConfig(url, value),
+              onSave: (value) => _saveConfig(managerUrl ?? url, value),
             ),
           ),
           ListTile(
             leading: Icon(_isTesting ? Icons.hourglass_empty : Icons.wifi),
             title: const Text('Probar conexión (3s timeout)'),
             subtitle: const Text('Verifica URL/Key y conectividad de red'),
-            onTap: _isTesting ? null : _testConnection,
+            onTap: (_isTesting || _isSwitching) ? null : _testConnection,
           ),
           ListTile(
             leading: const Icon(Icons.restore, color: Colors.orange),

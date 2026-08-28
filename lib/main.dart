@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'config/supabase_config.dart';
+import 'services/supabase_client_manager.dart';
 import 'config/app_theme.dart';
 import 'providers/cart_provider.dart';
 import 'providers/products_provider.dart';
@@ -11,13 +10,8 @@ import 'screens/home/home_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load saved Supabase config before initializing
-  await SupabaseConfig.loadFromStorage();
-
-  await Supabase.initialize(
-    url: SupabaseConfig.supabaseUrl,
-    publishableKey: SupabaseConfig.supabaseAnonKey,
-  );
+  // Initialize Supabase client manager (loads saved config)
+  await SupabaseClientManager().initialize();
 
   runApp(const BridgePosScanApp());
 }
